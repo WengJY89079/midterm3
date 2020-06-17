@@ -1,31 +1,6 @@
-from os import path
-import pickle
-
-def whatLane(playerX : int):
-    if playerX < 70:
-        return (0, playerX)
-    elif playerX < 140:
-        return (1 , playerX - 70)
-    elif playerX < 210:
-        return (2, playerX - 140)
-    elif playerX < 280:
-        return (3, playerX - 210)
-    elif playerX < 350:
-        return (4, playerX - 280)
-    elif playerX < 420:
-        return (5, playerX - 350)
-    elif playerX < 490:
-        return (6, playerX - 420)
-    elif playerX < 560:
-        return (7, playerX - 490)
-    else:
-        return (8, playerX - 560)
-
 class MLPlay:
     def __init__(self, player):
         self.player = player
-        with open(path.join(path.dirname(__file__), 'tree1.pickle'), 'rb') as f:
-            self.tree = pickle.load(f)
         if self.player == "player1":
             self.player_no = 0
         elif self.player == "player2":
@@ -34,190 +9,120 @@ class MLPlay:
             self.player_no = 2
         elif self.player == "player4":
             self.player_no = 3
-        self.car_vel = 0
-        self.car_pos = ()
+        self.car_vel = 0                            # speed initial
+        self.car_pos = (0,0)                        # pos initial
+        self.car_lane = self.car_pos[0] // 70       # lanes 0 ~ 8
+        self.lanes = [35, 105, 175, 245, 315, 385, 455, 525, 595]  # lanes center
         pass
 
     def update(self, scene_info):
         """
-        Generate the command according to the received scene information
+        9 grid relative position
+        |    |    |    |
+        |  1 |  2 |  3 |
+        |    |  5 |    |
+        |  4 |  c |  6 |
+        |    |    |    |
+        |  7 |  8 |  9 |
+        |    |    |    |       
         """
-        playerLane = -10000
-        playerLaneLeft = -10000
-        playerX = -10000
-        playerY = -10000
-        forward = -10000
-        back = -10000
-        forward_left = -10000
-        forward_left_left = -10000
-        forward_right = -10000
-        forward_right_right = -10000
-        back_left = -10000
-        back_left_left = -10000
-        back_right = -10000
-        back_right_right = -10000
-        left = -10000
-        left_left = -10000
-        right = -10000
-        right_right = -10000
+        def check_grid():
+            grid = set()
+            speed_ahead = 100
+            if self.car_pos[0] <= 65: # left bound
+                grid.add(1)
+                grid.add(4)
+                grid.add(7)
+            elif self.car_pos[0] >= 565: # right bound
+                grid.add(3)
+                grid.add(6)
+                grid.add(9)
 
-        self.car_pos = scene_info[self.player]
+            for car in scene_info["cars_info"]:
+                if car["id"] != self.player_no:
+                    x = self.car_pos[0] - car["pos"][0] # x relative position
+                    y = self.car_pos[1] - car["pos"][1] # y relative position
+                    if x <= 40 and x >= -40 :      
+                        if y > 0 and y < 300:
+                            grid.add(2)
+                            if y < 200:
+                                speed_ahead = car["velocity"]
+                                grid.add(5) 
+                        elif y < 0 and y > -200:
+                            grid.add(8)
+                    if x > -100 and x < -40 :
+                        if y > 80 and y < 250:
+                            grid.add(3)
+                        elif y < -80 and y > -200:
+                            grid.add(9)
+                        elif y < 80 and y > -80:
+                            grid.add(6)
+                    if x < 100 and x > 40:
+                        if y > 80 and y < 250:
+                            grid.add(1)
+                        elif y < -80 and y > -200:
+                            grid.add(7)
+                        elif y < 80 and y > -80:
+                            grid.add(4)
+            return move(grid= grid, speed_ahead = speed_ahead)
+            
+        def move(grid, speed_ahead): 
+            # if self.player_no == 0:
+            #     print(grid)
+            if len(grid) == 0:
+                return ["SPEED"]
+            else:
+                if (2 not in grid): # Check forward 
+                    # Back to lane center
+                    if self.car_pos[0] > self.lanes[self.car_lane]:
+                        return ["SPEED", "MOVE_LEFT"]
+                    elif self.car_pos[0 ] < self.lanes[self.car_lane]:
+                        return ["SPEED", "MOVE_RIGHT"]
+                    else :return ["SPEED"]
+                else:
+                    if (5 in grid): # NEED to BRAKE
+                        if (4 not in grid) and (7 not in grid): # turn left 
+                            if self.car_vel < speed_ahead:
+                                return ["SPEED", "MOVE_LEFT"]
+                            else:
+                                return ["BRAKE", "MOVE_LEFT"]
+                        elif (6 not in grid) and (9 not in grid): # turn right
+                            if self.car_vel < speed_ahead:
+                                return ["SPEED", "MOVE_RIGHT"]
+                            else:
+                                return ["BRAKE", "MOVE_RIGHT"]
+                        else : 
+                            if self.car_vel < speed_ahead:  # BRAKE
+                                return ["SPEED"]
+                            else:
+                                return ["BRAKE"]
+                    if (self.car_pos[0] < 60 ):
+                        return ["SPEED", "MOVE_RIGHT"]
+                    if (1 not in grid) and (4 not in grid) and (7 not in grid): # turn left 
+                        return ["SPEED", "MOVE_LEFT"]
+                    if (3 not in grid) and (6 not in grid) and (9 not in grid): # turn right
+                        return ["SPEED", "MOVE_RIGHT"]
+                    if (1 not in grid) and (4 not in grid): # turn left 
+                        return ["SPEED", "MOVE_LEFT"]
+                    if (3 not in grid) and (6 not in grid): # turn right
+                        return ["SPEED", "MOVE_RIGHT"]
+                    if (4 not in grid) and (7 not in grid): # turn left 
+                        return ["MOVE_LEFT"]    
+                    if (6 not in grid) and (9 not in grid): # turn right
+                        return ["MOVE_RIGHT"]
+                                
+                    
+        if len(scene_info[self.player]) != 0:
+            self.car_pos = scene_info[self.player]
+
         for car in scene_info["cars_info"]:
             if car["id"]==self.player_no:
                 self.car_vel = car["velocity"]
-                if car['id'] == self.player_no:
-                    playerLane, playerLaneLeft = whatLane(playerX=car['pos'][0])
-                    playerX = car['pos'][0]
-                    playerY = car['pos'][1]
-                    forward = playerY
-                    back = 800 - playerY
-                    if playerLane != 0:
-                        back_left = back
-                        forward_left = forward
-                    if playerLane != 8:
-                        back_right = back
-                        forward_right = forward
-                    if playerLane != 1 and playerLane != 0:
-                        back_left_left = back
-                        forward_left_left = forward
-                    if playerLane != 8 and playerLane != 7:
-                        back_right_right = back
-                        forward_right_right = forward
-        for car in scene_info["cars_info"]:
-            if car['id'] != self.player_no:
-                carLane, carLaneLeft = whatLane(playerX=car['pos'][0])
-                carX = car['pos'][0]
-                carY = car['pos'][1]
-                if carLane == playerLane:
-                    if carY > playerY:
-                        if back > carY - playerY - 80 and abs(playerX - carX) <= 40:
-                            back = carY - playerY - 80
-                        if carLaneLeft < 10:
-                            if back_left > carY - playerY - 80:
-                                back_left = carY - playerY - 80
-                        if carLaneLeft > 60:
-                            if back_right > carY - playerY - 80:
-                                back_right = carY - playerY - 80
-                    else:
-                        if forward > playerY - carY - 80 and abs(playerX - carX) <= 40:
-                            forward = playerY - carY - 80
-                        if carLaneLeft < 10:
-                            if forward_left > playerY - carY - 80:
-                                forward_left = playerY - carY - 80
-                        if carLaneLeft > 60:
-                            if forward_right > playerY - carY - 80:
-                                forward_right = playerY - carY - 80
-                    if abs(carY - playerY) - 80 <= 0:
-                        if carX > playerX:
-                            if right == -10000 or right > carLaneLeft - playerLaneLeft:
-                                right = carLaneLeft - playerLaneLeft
-                        else:
-                            if left == -10000 or left > playerLaneLeft - carLaneLeft:
-                                left = playerLaneLeft - carLaneLeft
-                if carLane == playerLane - 1 and playerLane != 0:
-                    if carY > playerY:
-                        if playerLaneLeft - carLaneLeft + 70 <= 40:
-                            if back > carY - playerY - 80:
-                                back = carY - playerY - 80
-                        if carLaneLeft < 10:
-                            if back_left_left > carY - playerY - 80:
-                                back_left_left = carY - playerY - 80
-                        if back_left > carY - playerY - 80:
-                            back_left = carY - playerY - 80
-                    else:
-                        if playerLaneLeft - carLaneLeft + 70 <= 40:
-                            if forward > playerY - carY - 80:
-                                forward = playerY - carY - 80
-                        if carLaneLeft < 10:
-                            if forward_left_left > playerY - carY - 80:
-                                forward_left_left = playerY - carY - 80
-                        if forward_left > playerY - carY - 80:
-                            forward_left = playerY - carY - 80
-                    if ((forward_left < 20 and forward_left != -10000) or (back_left < 20 and back_left != -10000))  and abs(carY - playerY) - 80 <= 0:
-                        if left == -10000 or left > playerLaneLeft - carLaneLeft + 70:
-                            left = playerLaneLeft - carLaneLeft + 70
-                if carLane == playerLane + 1 and playerLane != 8:
-                    if carY > playerY:
-                        if carLaneLeft - playerLaneLeft + 70 <= 40:
-                            if back > carY - playerY - 80:
-                                back = carY - playerY - 80
-                        if carLaneLeft > 60:
-                            if back_right_right > carY - playerY - 80:
-                                back_right_right = carY - playerY - 80
-                        if back_right > carY - playerY - 80:
-                            back_right = carY - playerY - 80
-                    else:
-                        if carLaneLeft - playerLaneLeft + 70 <= 40:
-                            if forward > playerY - carY - 80:
-                                forward = playerY - carY - 80
-                        if carLaneLeft > 60:
-                            if forward_right_right > playerY - carY - 80:
-                                forward_right_right = playerY - carY - 80
-                        if forward_right > playerY - carY - 80:
-                            forward_right = playerY - carY - 80
-                    if ((forward_right < 20 and forward_right != -10000) or(back_right < 20 and back_right != -10000))  and abs(carY - playerY) - 80 <= 0:
-                            right = carLaneLeft - playerLaneLeft + 70
-                if carLane == playerLane - 2 and playerLane > 1:
-                    if carY > playerY:
-                        if back_left_left > carY - playerY - 80:
-                            back_left_left = carY - playerY - 80
-                        if carLaneLeft > 60:
-                            if back_left > carY - playerY - 80:
-                                back_left = carY - playerY - 80
-                    else:
-                        if forward_left_left > playerY - carY - 80:
-                            forward_left_left = playerY - carY - 80
-                        if carLaneLeft > 60:
-                            if forward_left > playerY - carY - 80:
-                                forward_left = playerY - carY - 80
-                    if ((forward_left_left < 20 and forward_left_left != -10000) or (back_left_left < 20 and back_left_left != -10000))  and abs(carY - playerY) - 80 <= 0:
-                        if left_left == -10000 or left_left > playerLaneLeft - carLaneLeft + 140:
-                            left_left = playerLaneLeft - carLaneLeft + 140
-                if carLane == playerLane + 2 and playerLane < 7:
-                    if carY > playerY:
-                        if back_right_right > carY - playerY - 80:
-                            back_right_right = carY - playerY - 80
-                        if carLaneLeft < 10:
-                            if back_right > carY - playerY - 80:
-                                back_right = carY - playerY - 80
-                    else:
-                        if forward_right_right > playerY - carY - 80:
-                            forward_right_right = playerY - carY - 80
-                        if carLaneLeft < 10:
-                            if forward_right > playerY - carY - 80:
-                                forward_right = playerY - carY - 80
-                    if ((forward_right_right < 20 and forward_right_right != -10000) or(back_right_right < 20 and back_right_right != -10000))  and abs(carY - playerY) - 80 <= 0:
-                        if right_right == -10000 or right_right > carLaneLeft - playerLaneLeft + 140:
-                            right_right = carLaneLeft - playerLaneLeft + 140
-
 
         if scene_info["status"] != "ALIVE":
             return "RESET"
-
-
-        feature = [[forward, back, left, left_left, right, right_right, forward_left, forward_right, back_left, back_right, forward_left_left, forward_right_right, back_left_left, back_right_right, playerLaneLeft, playerLane]]
-
-        pred = self.tree.predict(feature)
-
-        if pred == 0:
-            return ['SPEED']
-        if pred == 1:
-            return ['RREAK']
-        if pred == 3:
-            return ['MOVE_LEFT']
-        if pred == 4:
-            return ['MOVE_RIGHT']
-        if pred == 5:
-            return ['SPEED', 'MOVE_LEFT']
-        if pred == 6:
-            return ['SPEED', 'MOVE_RIGHT']
-        if pred == 7:
-            return ['BREAK', 'MOVE_LEFT']
-        if pred == 8:
-            return ['BREAK', 'MOVE_RIGHT']
-        else:
-            return []
-
+        self.car_lane = self.car_pos[0] // 70
+        return check_grid()
 
     def reset(self):
         """
